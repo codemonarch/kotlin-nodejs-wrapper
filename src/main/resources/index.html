@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <script type="text/javascript" src="jquery-2.0.0.min.js"></script>
+    <script type="text/javascript">
+        function callapi() {
+            $.ajax({
+                url :"/api",
+                dataType: "text",
+                data: {
+                    name: "rarnu"
+                },
+                success: function (data) {
+                    $("#result")[0].innerHTML = data;
+                }
+
+            });
+        }
+    </script>
+</head>
+<body>
+hello html
+<p>
+
+    <input type="button" onclick="callapi();" value="CallAPI">
+</p>
+<div id="result"></div>
+
+</body>
+</html>

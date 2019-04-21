@@ -1,0 +1,15 @@
+{
+  "name": "ktnode",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "start": "node ./web/ktnode.js"
+  },
+  "author": "rarnu",
+  "license": "GPLv3",
+  "dependencies": {
+    "kotlin": "^1.3.20",
+    "express": "^4.15.4",
+    "mongoose": "^4.11.7"
+  }
+}
