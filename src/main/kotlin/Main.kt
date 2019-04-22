@@ -6,7 +6,7 @@ import kotlin.js.json
 fun main(args: Array<String>) {
     initServer()
 
-    routing("/index") { req, resp ->
+    routing("/index") { _, resp ->
         resp.type("text/html")
         loadRes("index.html") {
             println(it)
@@ -26,6 +26,15 @@ fun main(args: Array<String>) {
         val name = req.query?.name ?: ""
         resp.type("text/json")
         resp.send(json("result" to 0, "message" to "Hello World: $name"))
+    }
+
+    routingFile("/upload") { _, file, resp ->
+        loadFile(file.path) { c ->
+            saveFile("files/${uuid()}", c) { succ ->
+                println(if (succ) "uploaded" else "failed")
+            }
+        }
+        resp.end()
     }
 
     startListen()
