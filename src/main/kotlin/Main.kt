@@ -7,9 +7,9 @@ fun main(args: Array<String>) {
     initServer()
 
     routing("/index") { _, resp ->
+
         resp.type("text/html")
         loadRes("index.html") {
-            println(it)
             resp.send(it)
         }
     }
@@ -28,15 +28,16 @@ fun main(args: Array<String>) {
         resp.send(json("result" to 0, "message" to "Hello World: $name"))
     }
 
-    routingFile("/upload") { _, file, resp ->
+    routingSingleFile("/upload") { _, file, resp ->
         loadFile(file.path) { c ->
             saveFile("files/${uuid()}", c) { succ ->
                 println(if (succ) "uploaded" else "failed")
+                deleteFile(file.path)
             }
         }
-        resp.end()
+        resp.end("0")
     }
 
-    startListen()
+    startListen(8888)
 }
 
