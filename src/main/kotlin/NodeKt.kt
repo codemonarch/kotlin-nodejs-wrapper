@@ -2,25 +2,44 @@
 
 package com.rarnu.ktnode
 
+// import from nodejs
 external fun require(module: String): dynamic
 external val process: dynamic
 external val __dirname: dynamic
+external val __filename: dynamic
 
-var path = require("path")
-val express = require("express")
-val exec = require("child_process").exec
-val bodyParser = require("body-parser")
-val fs = require("fs")
+private var path = require("path")
+private val express = require("express")
+private val exec = require("child_process").exec
+private val bodyParser = require("body-parser")
+private val fs = require("fs")
+private val multer = require("multer")
+private val upload = multer(optionOf("dest" to "upload/"))
+private val sendSeekable = require("send-seekable")
+private val session = require("express-session")
+private val req = require("request")
+private val mysqldb = require("mysql")
+private val MongoClient = require("mongodb").MongoClient
+private val nunjucks = require("nunjucks")
+private val crypto = require("crypto")
+
+var errorHandler: ErrorHandler? = null
+var mysql: Mysql? = null
+var mongo: MongoDB? = null
+
 val runPath = "${process.cwd()}"
-val multer = require("multer")
-val upload = multer(js("({ dest: 'upload/'})"))
-
-var app: dynamic = null
+// app instance
+val app = express()
 
 fun initServer(staticPath: String = "") {
-    app = express()
-    app.use(bodyParser.urlencoded(extended = false))
+    process.on("uncaughtException") { err -> errorHandler?.handleException(err) }
+    process.on("unhandledRejection") { err, promise -> errorHandler?.handleRejection(err, promise) }
+    app.use(bodyParser.urlencoded(optionOf("extended" to false)))
     app.use(express.static(path.join(__dirname, staticPath)))
+    app.use(sendSeekable)
+    app.set("trust proxy", 1)
+    app.use(session(optionOf("secret" to "keyboard cat", "resave" to true, "saveUninitialized" to false, "cookie" to optionOf("maxAge" to 60000))))
+    nunjucks.configure("", optionOf("autoescape" to true))
 }
 
 fun startListen(port: Int) {
@@ -30,6 +49,7 @@ fun startListen(port: Int) {
     }
 }
 
+// request routing
 fun routing(path: String, method: String = "get", block: (req: Request, resp: Response) -> Unit) =
     when (method.toLowerCase()) {
         "get" -> app.get(path) { req, resp -> block(Request(req), Response(resp)) }
@@ -51,16 +71,29 @@ fun routingArrayFile(
     )
 }
 
-
 fun routingSingleFile(
     path: String,
     fileField: String = "file",
     block: (req: Request, file: File, resp: Response) -> Unit
 ) = app.post(path, upload.single(fileField)) { req, resp -> block(Request(req), File(req.file), Response(resp)) }
 
+// partial content
+fun routingSeekable(filePath: String, block: (req: Request, stream: dynamic, resp: Response) -> Unit) =
+    app.get(filePath) { req, resp ->
+        val file = "$runPath/$filePath"
+        val stream = fs.createReadStream(file)
+        block(Request(req), stream, Response(resp))
+    }
 
-fun execute(cmd: String, callback: (stdout: String, stderr: String) -> Unit) =
-    exec("\"$cmd\"", js("({timeout: 3000})")) { _, stdout, stderr -> callback("$stdout", "$stderr") }
+// command
+fun execute(cmd: String, timeout: Long = 3000, callback: (stdout: String, stderr: String) -> Unit) =
+    exec(cmd, optionOf("timeout" to timeout)) { _, stdout, stderr -> callback("$stdout", "$stderr") }
+
+// file operations
+fun moveFile(filePath: String, destPath: String, callback: (succ: Boolean) -> Unit) {
+    deleteFile(destPath)
+    fs.renameSync("$runPath/$filePath", "$runPath/$destPath") { err -> callback(err == null) }
+}
 
 fun saveFile(filePath: String, fileContent: String, callback: (succ: Boolean) -> Unit) {
     deleteFile(filePath)
@@ -73,6 +106,14 @@ fun deleteFile(filePath: String) {
     }
 }
 
+fun mkdir(path: String) {
+    if (!fileExists(path)) {
+        fs.mkdirSync("$runPath/$path")
+    }
+}
+
+fun getFilePath(filePath: String) = "$runPath/$filePath"
+
 fun fileExists(filePath: String): Boolean = fs.existsSync("$runPath/$filePath")
 
 fun loadFile(filePath: String, callback: (content: String) -> Unit) =
@@ -81,9 +122,137 @@ fun loadFile(filePath: String, callback: (content: String) -> Unit) =
 fun loadRes(filePath: String, callback: (content: String) -> Unit) =
     fs.readFile("$runPath/$filePath", "utf8") { _, data -> callback("${data ?: ""}") }
 
+// 网络请求
+fun request(
+    url: String,
+    method: String = "get",
+    query: dynamic = optionOf(),
+    formData: dynamic = optionOf(),
+    callback: (resp: Response, body: String) -> Unit
+) {
+    val options = optionOf("url" to url, "method" to method, "qs" to query, "form" to formData)
+    req(options) { _, resp, body -> callback(Response(resp), "${body ?: ""}") }
+}
+
+// database
+fun mysqlConnect(
+    database: String,
+    host: String = "127.0.0.1",
+    port: Int = 3306,
+    user: String = "root",
+    password: String = "root"
+): Boolean {
+    var ret = false
+    val options = optionOf("host" to host, "port" to port, "user" to user, "password" to password, "database" to database)
+    val conn = mysqldb.createConnection(options)
+    if (conn != null) {
+        mysql = Mysql(conn)
+        mysql?.connect()
+        ret = true
+    }
+    return ret
+}
+
+class Mysql(private val base: dynamic) {
+    fun connect() = base.connect()
+    fun select(sql: String, params: List<Any>, callback: (succ: Boolean, msg: String, result: List<dynamic>) -> Unit) =
+        base.query(sql, params.toTypedArray()) { err, result ->
+            if (err != null) {
+                callback(false, "${err.message}", listOf())
+            } else {
+                val list = mutableListOf<dynamic>()
+                result.forEach { rec -> list.add(rec) }
+                callback(true, "", list)
+            }
+        }
+
+    fun execute(sql: String, params: List<Any>, callback: (succ: Boolean, msg: String) -> Unit) =
+        base.query(sql, params.toTypedArray()) { err, _ ->
+            if (err != null) {
+                callback(false, "${err.message}")
+            } else {
+                callback(true, "")
+            }
+        }
+}
+
+fun mongoConnect(databaseName: String, host: String = "127.0.0.1", port: Int = 27017, callback: (succ: Boolean) -> Unit) =
+    MongoClient.connect("mongodb://$host:$port") { err, db ->
+    if (err == null) {
+        mongo = MongoDB(db, databaseName)
+        callback(true)
+    } else {
+        callback(false)
+    }
+}
+
+class MongoDB(private val base: dynamic, private val databaseName: String) {
+
+    fun select(collection: String, fields: List<String>? = null, whereOption: dynamic = optionOf(), callback: (succ: Boolean, result: List<dynamic>) -> Unit) {
+        val coll = base.db(databaseName).collection(collection)
+        val setOption = if (fields != null) {
+            val tmpSet: dynamic = object {}
+            fields.forEach { f -> tmpSet[f] = 1 }
+            tmpSet
+        } else {
+            null
+        }
+        coll.find(whereOption, setOption).toArray { err, result ->
+            if (err == null) {
+                val list = mutableListOf<dynamic>()
+                result.forEach {  r -> list.add(r) }
+                callback(true, list)
+            } else {
+                callback(false, listOf())
+            }
+        }
+    }
+
+    fun insert(collection: String, data: List<dynamic>, callback: (succ: Boolean) -> Unit) {
+        val coll = base.db(databaseName).collection(collection)
+        coll.insert(data.toTypedArray()) { err, result ->
+            println("$result")
+            callback(err == null)
+        }
+    }
+
+    fun update(collection: String, data: dynamic, whereOption: dynamic = optionOf(), callback: (succ: Boolean) -> Unit) {
+        val coll = base.db(databaseName).collection(collection)
+        val setOption: dynamic = object { }
+        setOption["\$set"] = data
+        coll.updateMany(whereOption, setOption) { err, result ->
+            println("$result")
+            callback(err == null)
+        }
+    }
+
+    fun delete(collection: String, whereOption: dynamic = optionOf(), callback: (succ: Boolean) -> Unit) {
+        val coll = base.db(databaseName).collection(collection)
+        coll.remove(whereOption) { err, result ->
+            println("$result")
+            callback(err == null)
+        }
+    }
+}
+
+fun renderString(str: String, option: dynamic): String = nunjucks.renderString(str, option)
+fun renderFile(filePath: String, option: dynamic): String = nunjucks.render(filePath, option)
+
 private fun s4() = js("(((1+Math.random())*0x10000)|0).toString(16).substring(1)")
 fun uuid() = "${s4()}${s4()}-${s4()}-${s4()}-${s4()}-${s4()}${s4()}${s4()}"
 
+fun optionOf(vararg pairs: Pair<String, Any>): dynamic {
+    val opt: dynamic = object { }
+    for ((k, v) in pairs) { opt[k] = v }
+    return opt
+}
+
+// app enclosure
+class App(val base: dynamic) {
+    // TODO: app
+}
+
+// class enclosure
 class Request(private val base: dynamic) {
     fun get(name: String): String = base.get(name)
     fun header(name: String): String = base.header(name)
@@ -110,6 +279,7 @@ class Request(private val base: dynamic) {
     val body: dynamic get() = base.body
     val route: dynamic get() = base.route
     val protocol: String get() = base.protocol
+    val session: dynamic get() = base.session
     val ip: String
         get() = try {
             base.ip
@@ -149,6 +319,7 @@ class Response(private val base: dynamic) {
     fun jsonp(obj: dynamic) = base.jsonp(obj)
     fun sendStatus(code: Int) = base.sendStatus(code)
     fun sendFile(path: String) = base.sendFile(path)
+    fun sendSeekable(buffer: dynamic, options: dynamic) = base.sendSeekable(buffer, options)
     fun download(path: String, filename: String) = base.download(path, filename)
     fun type(contentType: String) = base.type(contentType)
     fun attachment(filename: String) = base.attachment(filename)
@@ -191,4 +362,55 @@ fun File.Companion.listOf(filelist: dynamic): List<File> {
     val list = mutableListOf<File>()
     filelist.forEach { f -> list.add(File(f)) }
     return list
+}
+
+class FormFile(path: String) {
+    private var _parsed: dynamic = null
+
+    init {
+        _parsed = fs.createReadStream(path)
+    }
+
+    fun file() = _parsed
+}
+
+object Crypto {
+    fun getHashes(): List<String> {
+        val list = crypto.getHashes()
+        val ret = mutableListOf<String>()
+        list.forEach { h -> ret.add(h)}
+        return ret
+    }
+
+    fun getCiphers(): List<String> {
+        val list = crypto.getCiphers()
+        val ret = mutableListOf<String>()
+        list.forEach { h -> ret.add(h)}
+        return ret
+    }
+
+    fun hash(alg: String, str: String): String {
+        val ch = crypto.createHash(alg)
+        ch.update(str)
+        return ch.digest("hex")
+    }
+
+    fun cipherEncrypt(alg: String, str: String, key: String): String {
+        val ci = crypto.createCipher(alg, key)
+        val enc = ci.update(str, "utf8", "hex")
+        enc += ci.final("hex")
+        return enc
+    }
+
+    fun cipherDecrypt(alg: String, str: String, key: String): String {
+        val di = crypto.createDecipher(alg, key)
+        val dec = di.update(str, "hex", "utf8")
+        dec += di.final("utf8")
+        return dec
+    }
+}
+
+abstract class ErrorHandler {
+    abstract fun handleException(err: String?)
+    abstract fun handleRejection(err: String?, promise: dynamic)
 }

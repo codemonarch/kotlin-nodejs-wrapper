@@ -4,22 +4,58 @@ package com.rarnu.ktnode
 import kotlin.js.json
 
 fun main(args: Array<String>) {
-    initServer()
 
-    routing("/index") { _, resp ->
+    errorHandler = object : ErrorHandler() {
+        override fun handleRejection(err: String?, promise: dynamic) {
+            println(err)
+        }
 
-        resp.type("text/html")
-        loadRes("index.html") {
-            resp.send(it)
+        override fun handleException(err: String?) {
+            println(err)
         }
     }
 
+    initServer()
+    mongoConnect("rarnu") { succ ->
+        if (succ) {
+            println("mongo => $mongo")
+        } else {
+            println("mongo => error")
+        }
+    }
+    val key = "rarnu"
+    val enc = Crypto.cipherEncrypt("des", "hello", key)
+    println(enc)
+    val dec = Crypto.cipherDecrypt("des", enc, key)
+    println(dec)
+
+    mkdir("files")
+
+    routing("/index") { req, resp ->
+        if (req.session.views) {
+            req.session.views += 1
+        } else {
+            req.session.views = 1
+        }
+        println("view => ${req.session.views}")
+        val name = req.query.name
+        resp.type("text/html")
+        val html = renderFile("index.html", optionOf("username" to name))
+        resp.send(html)
+    }
+
     routing("/code", "post") { req, resp ->
-        println("uuid => " + uuid())
-        val c = req.body.c
-        val d = req.body.d
-        resp.type("text/json")
-        resp.send(json("c" to c, "d" to d))
+        // _ = req.body.language
+        val code = req.body.code
+        val fpath = "files/${uuid()}"
+        saveFile(fpath, code) { succ ->
+            if (succ) {
+                execute("/usr/local/bin/node ${getFilePath(fpath)}") { stdout, stderr ->
+                    resp.type("text/json")
+                    resp.send(json("result" to 0, "output" to stdout, "error" to stderr))
+                }
+            }
+        }
     }
 
     routing("/api") { req, resp ->
@@ -28,14 +64,57 @@ fun main(args: Array<String>) {
         resp.send(json("result" to 0, "message" to "Hello World: $name"))
     }
 
+    routing("/callapi") { _, resp ->
+        request("http://localhost:8888/api", query = optionOf("name" to "rarnu")) { _, body ->
+            println("body => $body")
+            resp.end()
+        }
+    }
+
     routingSingleFile("/upload") { _, file, resp ->
-        loadFile(file.path) { c ->
-            saveFile("files/${uuid()}", c) { succ ->
-                println(if (succ) "uploaded" else "failed")
-                deleteFile(file.path)
-            }
+        moveFile(file.path, "files/${uuid()}") { succ ->
+            println(if (succ) "uploaded" else "failed")
         }
         resp.end("0")
+    }
+
+    routing("/sql") { _, resp ->
+        mongo?.select("user", listOf("name", "age"), optionOf("name" to "yyy")) { succ, result ->
+            if (succ) {
+                result.forEach {
+                    println("data => ${it.name}, ${it.age}")
+                }
+            }
+            resp.end()
+        }
+    }
+
+    routing("/insert") { _, resp ->
+        mongo?.insert("user", listOf(optionOf("id" to 6, "name" to "rarnu", "age" to 30), optionOf("id" to 7, "name" to "rarnu666", "age" to 35))) { succ ->
+            println(if (succ) "insert succ" else "insert failed")
+            resp.end()
+        }
+
+    }
+
+    routing("/update") { _, resp ->
+        mongo?.update("user", optionOf("age" to 12345), optionOf("age" to optionOf("\$eq" to 60))) { succ ->
+            println(if (succ) "update succ" else "update failed")
+            resp.end()
+        }
+    }
+
+    routing("/delete") { _, resp ->
+        mongo?.delete("user", optionOf("age" to optionOf("\$eq" to 12))) { succ ->
+            println(if (succ) "delete succ" else "delete failed")
+            resp.end()
+        }
+    }
+
+    routing("/user/:id") { req, resp ->
+        val id = req.params.id
+        println("userid => $id")
+        resp.end()
     }
 
     startListen(8888)
