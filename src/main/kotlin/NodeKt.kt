@@ -130,9 +130,6 @@ fun fileExists(filePath: String): Boolean = fs.existsSync("$runPath/$filePath")
 fun loadFile(filePath: String, callback: (content: String) -> Unit) =
     fs.readFile("$runPath/$filePath", "utf8") { _, data -> callback("${data ?: ""}") }
 
-fun loadRes(filePath: String, callback: (content: String) -> Unit) =
-    fs.readFile("$runPath/$filePath", "utf8") { _, data -> callback("${data ?: ""}") }
-
 // 网络请求
 fun request(
     url: String,

@@ -32,7 +32,6 @@ fun main(args: Array<String>) {
     val opt = optionOf("a" to 1, "b" to 2)
     js("for (var prop in opt) { console.log(prop); }")
 
-
     mkdir("files")
 
     routing("/index") { req, resp ->
