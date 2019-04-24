@@ -4,9 +4,11 @@ package com.rarnu.ktnode
 
 // import from nodejs
 external fun require(module: String): dynamic
+
 external val process: dynamic
 external val __dirname: dynamic
 external val __filename: dynamic
+external val Buffer: dynamic
 
 private var path = require("path")
 private val express = require("express")
@@ -29,7 +31,7 @@ var mongo: MongoDB? = null
 
 val runPath = "${process.cwd()}"
 // app instance
-val app = express()
+val app = App(express())
 
 fun initServer(staticPath: String = "") {
     process.on("uncaughtException") { err -> errorHandler?.handleException(err) }
@@ -38,7 +40,16 @@ fun initServer(staticPath: String = "") {
     app.use(express.static(path.join(__dirname, staticPath)))
     app.use(sendSeekable)
     app.set("trust proxy", 1)
-    app.use(session(optionOf("secret" to "keyboard cat", "resave" to true, "saveUninitialized" to false, "cookie" to optionOf("maxAge" to 60000))))
+    app.use(
+        session(
+            optionOf(
+                "secret" to "keyboard cat",
+                "resave" to true,
+                "saveUninitialized" to false,
+                "cookie" to optionOf("maxAge" to 60000)
+            )
+        )
+    )
     nunjucks.configure("", optionOf("autoescape" to true))
 }
 
@@ -52,8 +63,8 @@ fun startListen(port: Int) {
 // request routing
 fun routing(path: String, method: String = "get", block: (req: Request, resp: Response) -> Unit) =
     when (method.toLowerCase()) {
-        "get" -> app.get(path) { req, resp -> block(Request(req), Response(resp)) }
-        "post" -> app.post(path) { req, resp -> block(Request(req), Response(resp)) }
+        "get" -> app.get(path) { req, resp -> block(req, resp) }
+        "post" -> app.post(path) { req, resp -> block(req, resp) }
         else -> {
         }
     }
@@ -65,9 +76,9 @@ fun routingArrayFile(
     block: (req: Request, file: List<File>, resp: Response) -> Unit
 ) = app.post(path, upload.array(fileField, arraySize)) { req, resp ->
     block(
-        Request(req),
+        req,
         File.listOf(req.files),
-        Response(resp)
+        resp
     )
 }
 
@@ -75,14 +86,14 @@ fun routingSingleFile(
     path: String,
     fileField: String = "file",
     block: (req: Request, file: File, resp: Response) -> Unit
-) = app.post(path, upload.single(fileField)) { req, resp -> block(Request(req), File(req.file), Response(resp)) }
+) = app.post(path, upload.single(fileField)) { req, resp -> block(req, File(req.file), resp) }
 
 // partial content
 fun routingSeekable(filePath: String, block: (req: Request, stream: dynamic, resp: Response) -> Unit) =
     app.get(filePath) { req, resp ->
         val file = "$runPath/$filePath"
         val stream = fs.createReadStream(file)
-        block(Request(req), stream, Response(resp))
+        block(req, stream, resp)
     }
 
 // command
@@ -143,7 +154,8 @@ fun mysqlConnect(
     password: String = "root"
 ): Boolean {
     var ret = false
-    val options = optionOf("host" to host, "port" to port, "user" to user, "password" to password, "database" to database)
+    val options =
+        optionOf("host" to host, "port" to port, "user" to user, "password" to password, "database" to database)
     val conn = mysqldb.createConnection(options)
     if (conn != null) {
         mysql = Mysql(conn)
@@ -176,19 +188,29 @@ class Mysql(private val base: dynamic) {
         }
 }
 
-fun mongoConnect(databaseName: String, host: String = "127.0.0.1", port: Int = 27017, callback: (succ: Boolean) -> Unit) =
-    MongoClient.connect("mongodb://$host:$port") { err, db ->
-    if (err == null) {
-        mongo = MongoDB(db, databaseName)
-        callback(true)
-    } else {
-        callback(false)
+fun mongoConnect(
+    databaseName: String,
+    host: String = "127.0.0.1",
+    port: Int = 27017,
+    callback: (succ: Boolean) -> Unit
+) =
+    MongoClient.connect("mongodb://$host:$port", optionOf("useNewUrlParser" to true)) { err, db ->
+        if (err == null) {
+            mongo = MongoDB(db, databaseName)
+            callback(true)
+        } else {
+            callback(false)
+        }
     }
-}
 
 class MongoDB(private val base: dynamic, private val databaseName: String) {
 
-    fun select(collection: String, fields: List<String>? = null, whereOption: dynamic = optionOf(), callback: (succ: Boolean, result: List<dynamic>) -> Unit) {
+    fun select(
+        collection: String,
+        fields: List<String>? = null,
+        whereOption: dynamic = optionOf(),
+        callback: (succ: Boolean, result: List<dynamic>) -> Unit
+    ) {
         val coll = base.db(databaseName).collection(collection)
         val setOption = if (fields != null) {
             val tmpSet: dynamic = object {}
@@ -200,7 +222,7 @@ class MongoDB(private val base: dynamic, private val databaseName: String) {
         coll.find(whereOption, setOption).toArray { err, result ->
             if (err == null) {
                 val list = mutableListOf<dynamic>()
-                result.forEach {  r -> list.add(r) }
+                result.forEach { r -> list.add(r) }
                 callback(true, list)
             } else {
                 callback(false, listOf())
@@ -216,9 +238,14 @@ class MongoDB(private val base: dynamic, private val databaseName: String) {
         }
     }
 
-    fun update(collection: String, data: dynamic, whereOption: dynamic = optionOf(), callback: (succ: Boolean) -> Unit) {
+    fun update(
+        collection: String,
+        data: dynamic,
+        whereOption: dynamic = optionOf(),
+        callback: (succ: Boolean) -> Unit
+    ) {
         val coll = base.db(databaseName).collection(collection)
-        val setOption: dynamic = object { }
+        val setOption: dynamic = object {}
         setOption["\$set"] = data
         coll.updateMany(whereOption, setOption) { err, result ->
             println("$result")
@@ -242,14 +269,11 @@ private fun s4() = js("(((1+Math.random())*0x10000)|0).toString(16).substring(1)
 fun uuid() = "${s4()}${s4()}-${s4()}-${s4()}-${s4()}-${s4()}${s4()}${s4()}"
 
 fun optionOf(vararg pairs: Pair<String, Any>): dynamic {
-    val opt: dynamic = object { }
-    for ((k, v) in pairs) { opt[k] = v }
+    val opt: dynamic = object {}
+    for ((k, v) in pairs) {
+        opt[k] = v
+    }
     return opt
-}
-
-// app enclosure
-class App(val base: dynamic) {
-    // TODO: app
 }
 
 // class enclosure
@@ -278,6 +302,8 @@ class Request(private val base: dynamic) {
     val query: dynamic get() = base.query
     val body: dynamic get() = base.body
     val route: dynamic get() = base.route
+    val file: dynamic get() = base.file
+    val files: dynamic get() = base.files
     val protocol: String get() = base.protocol
     val session: dynamic get() = base.session
     val ip: String
@@ -378,14 +404,14 @@ object Crypto {
     fun getHashes(): List<String> {
         val list = crypto.getHashes()
         val ret = mutableListOf<String>()
-        list.forEach { h -> ret.add(h)}
+        list.forEach { h -> ret.add(h) }
         return ret
     }
 
     fun getCiphers(): List<String> {
         val list = crypto.getCiphers()
         val ret = mutableListOf<String>()
-        list.forEach { h -> ret.add(h)}
+        list.forEach { h -> ret.add(h) }
         return ret
     }
 
@@ -395,22 +421,43 @@ object Crypto {
         return ch.digest("hex")
     }
 
-    fun cipherEncrypt(alg: String, str: String, key: String): String {
-        val ci = crypto.createCipher(alg, key)
+    fun cipherEncrypt(alg: String, str: String, key: dynamic, iv: dynamic): String {
+        val ci = crypto.createCipheriv(alg, key, iv)
         val enc = ci.update(str, "utf8", "hex")
         enc += ci.final("hex")
         return enc
     }
 
-    fun cipherDecrypt(alg: String, str: String, key: String): String {
-        val di = crypto.createDecipher(alg, key)
+    fun cipherDecrypt(alg: String, str: String, key: dynamic, iv: dynamic): String {
+        val di = crypto.createDecipheriv(alg, key, iv)
         val dec = di.update(str, "hex", "utf8")
         dec += di.final("utf8")
         return dec
     }
 }
 
+object Buf {
+    fun from(c: dynamic): dynamic = Buffer.from(c)
+    fun alloc(len: Int): dynamic = Buffer.alloc(len)
+}
+
 abstract class ErrorHandler {
     abstract fun handleException(err: String?)
     abstract fun handleRejection(err: String?, promise: dynamic)
+}
+
+// app enclosure
+class App(val base: dynamic) {
+    fun use(c: dynamic) = base.use(c)
+
+    fun set(key: String, value: dynamic) = base.set(key, value)
+    fun listen(port: Int = 8888, callback: () -> Unit) = base.listen(port) { callback() }
+    fun get(path: String, callback: (req: Request, resp: Response) -> Unit) =
+        base.get(path) { req, resp -> callback(Request(req), Response(resp)) }
+
+    fun post(path: String, callback: (req: Request, resp: Response) -> Unit) =
+        base.post(path) { req, resp -> callback(Request(req), Response(resp)) }
+
+    fun post(path: String, option: dynamic, callback: (req: Request, resp: Response) -> Unit) =
+        base.post(path, option) { req, resp -> callback(Request(req), Response(resp)) }
 }

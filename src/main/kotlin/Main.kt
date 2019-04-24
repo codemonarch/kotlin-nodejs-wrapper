@@ -4,7 +4,6 @@ package com.rarnu.ktnode
 import kotlin.js.json
 
 fun main(args: Array<String>) {
-
     errorHandler = object : ErrorHandler() {
         override fun handleRejection(err: String?, promise: dynamic) {
             println(err)
@@ -23,11 +22,16 @@ fun main(args: Array<String>) {
             println("mongo => error")
         }
     }
-    val key = "rarnu"
-    val enc = Crypto.cipherEncrypt("des", "hello", key)
+    val key = Buf.from("12345678")
+    val iv = Buf.alloc(0)
+    val enc = Crypto.cipherEncrypt("des-ecb", "hello", key, iv)
     println(enc)
-    val dec = Crypto.cipherDecrypt("des", enc, key)
+    val dec = Crypto.cipherDecrypt("des-ecb", enc, key, iv)
     println(dec)
+
+    val opt = optionOf("a" to 1, "b" to 2)
+    js("for (var prop in opt) { console.log(prop); }")
+
 
     mkdir("files")
 
