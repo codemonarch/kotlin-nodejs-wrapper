@@ -39,6 +39,7 @@ fun main(args: Array<String>) {
 在包装器内，目前已经包装了常用的类和方法，主要列表如下:
 
 **内建方法**
+
 | 功能 | 方法 | 参数 | 返回| 描述 |
 | :-- | :-- | :-- | :-- | :-- |
 | routing | routing | path[, method] | req, resp | 处理一个请求 |
@@ -62,6 +63,7 @@ fun main(args: Array<String>) {
 | | optionOf | pairs ... | dynamic | 生成一个 js 的 option 对象 |
 
 **内建类**
+
 | 类 | 成员 | 数据类型 | 描述 |
 | :-- | :-- | :-- | :--|
 | Request | get(name) | string | 获取 header 内容 |
