@@ -1,6 +1,6 @@
 {
   "name": "ktnode",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "",
   "scripts": {
     "start": "node ./web/ktnode.js"
@@ -8,16 +8,17 @@
   "author": "rarnu",
   "license": "GPLv3",
   "dependencies": {
-    "kotlin": "^1.3.20",
-    "express": "^4.15.4",
-    "mongodb": "^3.2.3",
-    "body-parser": "^1.15.2",
-    "multer": "^1.4.1",
+    "kotlin": "^1.3.61",
+    "express": "^4.17.1",
+    "mongodb": "^3.5.5",
+    "body-parser": "^1.19.0",
+    "multer": "^1.4.2",
     "send-seekable": "^1.0.4",
-    "express-session": "^1.16.1",
-    "request": "^2.88.0",
-    "mysql": "^2.17.1",
+    "express-session": "^1.17.0",
+    "request": "^2.88.2",
+    "mysql": "^2.18.1",
     "nunjucks": "^3.2.0",
-    "crypto": "^1.0.1"
+    "crypto": "^1.0.1",
+    "minimist": "^1.2.5"
   }
 }
