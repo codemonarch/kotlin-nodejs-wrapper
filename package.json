@@ -19,6 +19,8 @@
     "mysql": "^2.18.1",
     "nunjucks": "^3.2.0",
     "crypto": "^1.0.1",
-    "minimist": "^1.2.5"
+    "minimist": "^1.2.5",
+    "set-value": "^3.0.1",
+    "mixin-deep": "^2.0.1"
   }
 }
